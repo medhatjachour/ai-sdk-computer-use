@@ -1,22 +1,27 @@
 # Operator — AI Computer-Use Agent
 
-![Operator screenshot](samples/Screenshot%202026-05-09%20235633.png)
+> Built for the Emergent AI challenge · May 2026
 
-An AI agent that controls a real browser desktop. Send a message, watch it click, type, and browse — live.
+**[▶ Demo Video](YOUR_VIDEO_LINK_HERE)** · **[GitHub Repository](YOUR_GITHUB_REPO_LINK_HERE)**
 
 ---
 
-## What We Built
+![App screenshot](samples/Screenshot%202026-05-09%20235633.png)
 
-A full-stack computer-use agent with:
+An AI agent that controls a real Linux desktop in the browser. Type a task → watch the agent take screenshots, click, type, and browse — live.
 
-- **Streaming AI chat** — Groq `llama-3.1-8b-instant` via the AI SDK, server-side multi-step tool loops (`maxSteps: 10`)
-- **Live remote desktop** — Vercel Sandbox (ephemeral Linux VM) streamed to the browser via noVNC/WebSocket
-- **Structured event pipeline** — every tool call captured with `id`, `timestamp`, `type`, `payload`, `status`, `duration`
-- **Interactive tool visualizations** — screenshot thumbnails, bash output, and click details inline in chat; click any to expand in the right panel
-- **Session management** — create, switch, and delete sessions; full message history persisted to `localStorage`
-- **Collapsible debug panel** — event timeline + per-type counts, useful for inspecting agent behavior
-- **Mobile support** — tab switcher (Chat / Desktop) for small screens
+---
+
+## Features
+
+- **Streaming chat** with inline tool-call cards (screenshot thumbnails, bash output, click details)
+- **Live remote desktop** via noVNC iframe — Vercel Sandbox ephemeral VM
+- **Structured event pipeline** — every tool call captured: `id`, `timestamp`, `type`, `payload`, `status` (pending/complete/error/aborted), `duration`
+- **Collapsible debug panel** — real-time event timeline + per-action-type counts
+- **Expanded tool detail panel** — click any tool card in chat to see full details in the right panel
+- **Session management** — create, switch, delete sessions; history persisted to `localStorage`
+- **Resizable panels** — drag the divider between chat and desktop
+- **Mobile support** — Chat / Desktop tab switcher on small screens
 
 ---
 
@@ -24,141 +29,85 @@ A full-stack computer-use agent with:
 
 ```
 Browser
- ├── Left panel (38%) ─── Chat + tool cards + debug panel
- └── Right panel (62%) ── noVNC iframe + expanded tool detail
+├── Left panel (38%)  ── Chat messages + inline tool cards + debug panel
+└── Right panel (62%) ── noVNC iframe (live desktop) + expanded tool detail
 
-Next.js App Router (server)
- ├── /api/chat    ── streamText (Groq, maxSteps: 10, computer + bash tools)
- └── /api/kill-desktop ── tears down sandbox on session end
+Next.js App Router
+├── /api/chat         ── streamText with computer + bash tools (maxSteps: 10)
+└── /api/kill-desktop ── cleans up sandbox VM on session end
 
 Event pipeline
- messages (useChat) → useEventStore → AgentEvent[] → DebugPanel + ExpandedToolDetail
+  useChat (AI SDK) → useEventStore → AgentEvent[] → DebugPanel + ExpandedToolDetail
 
-State
- useSessions (localStorage) ── session list, sandboxId per session
- useEventStore (derived)    ── events[], countByType, agentStatus
+State management
+  useSessions  (localStorage) ── sessions list, sandboxId per session
+  useEventStore (derived)     ── events[], countByType, agentStatus
 ```
 
 ---
 
-## Technical Focus
+## Technical Standards Met
 
-| Area | Approach |
-|------|----------|
-| **TypeScript** | No `any`. Discriminated union `AgentEvent = ComputerAgentEvent \| BashAgentEvent` with full payload typing |
-| **React performance** | `VncViewer` wrapped in `memo` — never re-renders on chat updates |
-| **State** | Centralized derived event store; screenshot base64 always redacted before API round-trips |
-| **Streaming** | Server-side `maxSteps` keeps tool loops server-internal; client sees a single streaming response |
-| **Concurrency** | Sandbox lifecycle tied to session; `beforeunload` / `pagehide` cleans up VMs |
+| Area | Implementation |
+|------|---------------|
+| **TypeScript** | No `any`. Discriminated union `AgentEvent = ComputerAgentEvent \| BashAgentEvent` with fully-typed payloads per action |
+| **React performance** | `VncViewer` wrapped in `React.memo` with custom comparator — zero re-renders on chat updates |
+| **Event store** | `id`, `timestamp`, `type`, `payload`, `status`, `duration` on every event; derived `countByType` and `agentStatus` |
+| **Streaming** | Server-side `maxSteps: 10` keeps tool loops internal; screenshot base64 always redacted before API round-trips to stay within token limits |
+| **Concurrency** | `beforeunload`/`pagehide` beacon kills the sandbox VM; each session tracks its own `sandboxId` |
+| **Error handling** | Tool lifecycle: initiated → executing → completed/failed/aborted; toast notifications on API errors |
 
 ---
 
 ## Tech Stack
 
-- **Next.js 15** (App Router, React 19)
-- **AI SDK** (`ai`, `@ai-sdk/openai`) — streaming, tool calls
-- **Groq** (`llama-3.1-8b-instant`) — fast inference, large free-tier TPM
-- **Vercel Sandbox** — ephemeral Linux VMs with snapshot restore
-- **Tailwind CSS v4** + shadcn/ui components
-- **react-resizable-panels** — drag-to-resize layout
-- **motion/react** — animated message entries and tool cards
-- **Zod** — tool parameter schemas
+| | |
+|--|--|
+| **Framework** | Next.js 15.2 (App Router, React 19) |
+| **AI** | Groq `llama-3.1-8b-instant` via `@ai-sdk/openai` (OpenAI-compat endpoint) |
+| **AI SDK** | `ai` v4 — `streamText`, `useChat`, `tool()` with Zod schemas |
+| **Sandbox** | Vercel Sandbox — ephemeral Linux VMs (Xvnc, openbox, Chrome, websockify, noVNC) |
+| **Styling** | Tailwind CSS v4, shadcn/ui, motion/react |
+| **Layout** | `react-resizable-panels` |
+
+> **Note on AI provider:** The challenge originally references Anthropic Claude. We switched to Groq (`llama-3.1-8b-instant`) due to Anthropic credit exhaustion. Groq provides an OpenAI-compatible API so the AI SDK integration is identical. The `computer` and `bash` tool schemas, event pipeline, and all other architecture are provider-agnostic.
 
 ---
 
 ## Running Locally
 
-1. Clone and install:
-   ```bash
-   npm install
-   ```
-
-2. Copy `.env.example` to `.env.local` and fill in:
-   ```
-   GROQ_API_KEY=...
-   VERCEL_TOKEN=...
-   SANDBOX_SNAPSHOT_ID=...   # create with: npx tsx lib/sandbox/create-snapshot.ts
-   ```
-
-3. Start:
-   ```bash
-   npm run dev
-   ```
-
-Open [http://localhost:3000](http://localhost:3000).
-```
-
-## Deploy Your Own
-
-You can deploy your own version to Vercel by clicking the button below:
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?project-name=AI+SDK+Computer+Use+Demo&repository-name=ai-sdk-computer-use&repository-url=https%3A%2F%2Fgithub.com%2Fvercel-labs%2Fai-sdk-computer-use&demo-title=AI+SDK+Computer+Use+Demo&demo-url=https%3A%2F%2Fai-sdk-computer-use.vercel.app%2F&demo-description=A+chatbot+application+built+with+Next.js+demonstrating+Anthropic+Claude+Sonnet+4.5+computer+use+capabilities+with+Vercel+Sandboxes&env=ANTHROPIC_API_KEY,SANDBOX_SNAPSHOT_ID)
-
-## Running Locally
-
-### Prerequisites
-
-- Node.js 18+
-- A [Vercel](https://vercel.com) account (for Sandbox access)
-- An [Anthropic API key](https://console.anthropic.com/)
-
 ### 1. Install dependencies
-
 ```bash
-pnpm install
+npm install
 ```
 
-### 2. Set up Vercel credentials
-
-Install the [Vercel CLI](https://vercel.com/docs/cli) and link your project:
-
-```bash
-pnpm install -g vercel
-vercel link
-vercel env pull
+### 2. Set up environment variables
+Copy `.env.example` to `.env.local`:
+```
+GROQ_API_KEY=gsk_...           # https://console.groq.com
+VERCEL_TOKEN=vcp_...           # https://vercel.com/account/tokens
+SANDBOX_SNAPSHOT_ID=snap_...   # see step 3
 ```
 
-This creates a `.env.local` file with `VERCEL_OIDC_TOKEN` for Sandbox authentication.
-
-Alternatively, set `VERCEL_TOKEN`, `VERCEL_TEAM_ID`, and `VERCEL_PROJECT_ID` manually in your `.env.local`.
-
-### 3. Create a sandbox snapshot
-
-The snapshot pre-installs the desktop environment (Xvnc, Chrome, openbox, noVNC, xdotool, ImageMagick) so sandboxes boot in seconds.
-
+### 3. Create the sandbox snapshot (one-time, ~10 min)
+Builds a Linux VM image with Chrome, VNC, and all desktop tools pre-installed:
 ```bash
 npx tsx lib/sandbox/create-snapshot.ts
 ```
+Copy the printed `snap_xxx` ID into `.env.local`.
 
-This takes ~10 minutes. When done, it outputs a snapshot ID. Add it to your `.env.local`:
-
-```
-SANDBOX_SNAPSHOT_ID=snap_xxxxxxxxxxxxx
-```
-
-### 4. Add your Anthropic API key
-
-```
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-### 5. Start the dev server
-
+### 4. Start the dev server
 ```bash
-pnpm dev
+npm run dev
 ```
+Open [http://localhost:3000](http://localhost:3000).
 
-Open [http://localhost:3000](http://localhost:3000) to use the computer use agent.
+---
 
-## Environment Variables
+## Decisions & Trade-offs
 
-| Variable | Required | Description |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | Yes | Anthropic API key for Claude |
-| `SANDBOX_SNAPSHOT_ID` | Yes | Vercel Sandbox snapshot with the desktop environment |
-| `VERCEL_OIDC_TOKEN` | Yes* | Auto-set by `vercel env pull` for Sandbox auth |
-| `VERCEL_TOKEN` | Alt* | Alternative to OIDC — a Vercel personal access token |
-| `VERCEL_TEAM_ID` | Alt* | Required with `VERCEL_TOKEN` |
-| `VERCEL_PROJECT_ID` | Alt* | Required with `VERCEL_TOKEN` |
+- **Groq over Anthropic** — identical AI SDK integration, massively higher free-tier rate limits (6M TPM vs 12K TPM), avoiding blocked credits.
+- **Server-side `maxSteps`** — keeps all tool-loop round-trips server-internal so the browser only receives one streaming response per user message, reducing complexity and latency.
+- **Screenshot redaction** — base64 images are stripped from the message history before each API call; only the most recent live screenshot is sent, keeping requests under the token limit.
+- **Event store derived from messages** — `useEventStore` derives structured `AgentEvent[]` from `useChat` messages rather than maintaining a separate parallel state, avoiding sync issues.
 
-\* Either `VERCEL_OIDC_TOKEN` (via `vercel env pull`) or the `VERCEL_TOKEN` + team/project IDs are required for Sandbox authentication.
