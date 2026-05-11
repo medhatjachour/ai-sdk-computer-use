@@ -2,7 +2,7 @@
 
 > Built for the Emergent AI challenge · May 2026
 
-**[▶ Demo Video](YOUR_VIDEO_LINK_HERE)** · **[GitHub Repository](YOUR_GITHUB_REPO_LINK_HERE)**
+**[▶ Demo Video](https://drive.google.com/file/d/1gHmBLa8c4SFOHDKgUvMxDZ00cniwVBDH/view?usp=sharing)** · 
 
 ---
 

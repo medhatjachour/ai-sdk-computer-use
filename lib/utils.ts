@@ -31,7 +31,7 @@ export const prunedMessages = (messages: UIMessage[]): UIMessage[] => {
           ...part,
           toolInvocation: {
             ...part.toolInvocation,
-            result: { type: "text", text: "[screenshot — image data redacted to save tokens]" },
+            result: "[screenshot redacted to save tokens]",
           },
         };
       }

@@ -65,43 +65,42 @@ export const computerTool = (sandboxId: string) =>
       "Always take a screenshot first to see the current state of the screen.",
     parameters: z.object({
       action: z
-        .enum([
-          "screenshot",
-          "left_click",
-          "right_click",
-          "double_click",
-          "mouse_move",
-          "type",
-          "key",
-          "scroll",
-          "left_click_drag",
-          "wait",
-        ])
-        .describe("The action to perform"),
+        .string()
+        .describe(
+          "The action to perform. Supported: screenshot, left_click, right_click, middle_click, " +
+          "double_click, triple_click, mouse_move, type, key, hold_key, scroll, " +
+          "left_click_drag, right_click_drag, cursor_position, wait"
+        ),
       coordinate: z
-        .tuple([z.number(), z.number()])
+        .array(z.number())
+        .nullable()
         .optional()
-        .describe("Screen [x, y] coordinate for click/move actions"),
+        .describe("Screen [x, y] coordinate for click/move actions, e.g. [512, 400]"),
       text: z
         .string()
+        .nullable()
         .optional()
         .describe("Text to type or key name to press (e.g. 'Return', 'ctrl+c')"),
       duration: z
         .number()
+        .nullable()
         .optional()
         .describe("Duration in seconds for wait action (max 2)"),
       scroll_direction: z
-        .enum(["up", "down", "left", "right"])
+        .string()
+        .nullable()
         .optional()
-        .describe("Scroll direction"),
+        .describe("Scroll direction: up, down, left, right"),
       scroll_amount: z
         .number()
+        .nullable()
         .optional()
         .describe("Number of scroll clicks"),
       start_coordinate: z
-        .tuple([z.number(), z.number()])
+        .array(z.number())
+        .nullable()
         .optional()
-        .describe("Start [x, y] for drag action"),
+        .describe("Start [x, y] for drag action, e.g. [100, 200]"),
     }),
     execute: async ({
       action,
@@ -114,21 +113,45 @@ export const computerTool = (sandboxId: string) =>
     }) => {
       const sandbox = await getDesktop(sandboxId);
 
-      switch (action) {
+      // Normalise aliases the model may send
+      const actionAliases: Record<string, string> = {
+        click: "left_click",
+        tap: "left_click",
+        move: "mouse_move",
+        move_mouse: "mouse_move",
+        drag: "left_click_drag",
+        press: "key",
+        press_key: "key",
+        keypress: "key",
+        input: "type",
+        input_text: "type",
+        write: "type",
+        take_screenshot: "screenshot",
+        capture: "screenshot",
+        right_drag: "right_click_drag",
+        get_cursor: "cursor_position",
+        sleep: "wait",
+        pause: "wait",
+      };
+      const normalizedAction = actionAliases[action] ?? action;
+
+      switch (normalizedAction) {
         case "screenshot": {
           await sandbox.runCommand({
-            cmd: "import",
-            args: ["-window", "root", "/tmp/screenshot.png"],
+            cmd: "bash",
+            args: [
+              "-c",
+              "import -window root -resize '800x600>' -quality 35 /tmp/screenshot.jpg 2>/dev/null || import -window root /tmp/screenshot.jpg",
+            ],
             env: DISPLAY_ENV,
           });
           const buffer = await sandbox.readFileToBuffer({
-            path: "/tmp/screenshot.png",
+            path: "/tmp/screenshot.jpg",
           });
-          if (!buffer) throw new Error("Failed to read screenshot");
-          const base64Data = buffer.toString("base64");
+          if (!buffer) throw new Error("Failed to capture screenshot — display may not be ready");
           return {
             type: "image" as const,
-            data: base64Data,
+            data: buffer.toString("base64"),
           };
         }
         case "wait": {
@@ -143,7 +166,7 @@ export const computerTool = (sandboxId: string) =>
         case "left_click": {
           if (!coordinate)
             throw new Error("Coordinate required for left click action");
-          const [x, y] = coordinate;
+          const [x, y] = coordinate as [number, number];
           await sandbox.runCommand({
             cmd: "xdotool",
             args: ["mousemove", "--sync", String(x), String(y), "click", "1"],
@@ -154,7 +177,7 @@ export const computerTool = (sandboxId: string) =>
         case "double_click": {
           if (!coordinate)
             throw new Error("Coordinate required for double click action");
-          const [x, y] = coordinate;
+          const [x, y] = coordinate as [number, number];
           await sandbox.runCommand({
             cmd: "xdotool",
             args: [
@@ -177,7 +200,7 @@ export const computerTool = (sandboxId: string) =>
         case "right_click": {
           if (!coordinate)
             throw new Error("Coordinate required for right click action");
-          const [x, y] = coordinate;
+          const [x, y] = coordinate as [number, number];
           await sandbox.runCommand({
             cmd: "xdotool",
             args: ["mousemove", "--sync", String(x), String(y), "click", "3"],
@@ -191,7 +214,7 @@ export const computerTool = (sandboxId: string) =>
         case "mouse_move": {
           if (!coordinate)
             throw new Error("Coordinate required for mouse move action");
-          const [x, y] = coordinate;
+          const [x, y] = coordinate as [number, number];
           await sandbox.runCommand({
             cmd: "xdotool",
             args: ["mousemove", "--sync", String(x), String(y)],
@@ -238,8 +261,8 @@ export const computerTool = (sandboxId: string) =>
         case "left_click_drag": {
           if (!start_coordinate || !coordinate)
             throw new Error("Coordinates required for drag action");
-          const [startX, startY] = start_coordinate;
-          const [endX, endY] = coordinate;
+          const [startX, startY] = start_coordinate as [number, number];
+          const [endX, endY] = coordinate as [number, number];
           await sandbox.runCommand({
             cmd: "xdotool",
             args: [
@@ -262,8 +285,70 @@ export const computerTool = (sandboxId: string) =>
             text: `Dragged mouse from ${startX}, ${startY} to ${endX}, ${endY}`,
           };
         }
+        case "middle_click": {
+          if (!coordinate) throw new Error("Coordinate required for middle click action");
+          const [x, y] = coordinate as [number, number];
+          await sandbox.runCommand({
+            cmd: "xdotool",
+            args: ["mousemove", "--sync", String(x), String(y), "click", "2"],
+            env: DISPLAY_ENV,
+          });
+          return { type: "text" as const, text: `Middle clicked at ${x}, ${y}` };
+        }
+        case "triple_click": {
+          if (!coordinate) throw new Error("Coordinate required for triple click action");
+          const [x, y] = coordinate as [number, number];
+          await sandbox.runCommand({
+            cmd: "xdotool",
+            args: ["mousemove", "--sync", String(x), String(y), "click", "--repeat", "3", "1"],
+            env: DISPLAY_ENV,
+          });
+          return { type: "text" as const, text: `Triple clicked at ${x}, ${y}` };
+        }
+        case "hold_key": {
+          if (!text) throw new Error("Key required for hold_key action");
+          const mappedKey = mapKey(text);
+          const holdDuration = Math.min(duration ?? 1, 2);
+          await sandbox.runCommand({
+            cmd: "xdotool",
+            args: ["keydown", mappedKey],
+            env: DISPLAY_ENV,
+          });
+          await wait(holdDuration);
+          await sandbox.runCommand({
+            cmd: "xdotool",
+            args: ["keyup", mappedKey],
+            env: DISPLAY_ENV,
+          });
+          return { type: "text" as const, text: `Held key ${text} for ${holdDuration}s` };
+        }
+        case "right_click_drag": {
+          if (!start_coordinate || !coordinate)
+            throw new Error("Coordinates required for right drag action");
+          const [startX, startY] = start_coordinate as [number, number];
+          const [endX, endY] = coordinate as [number, number];
+          await sandbox.runCommand({
+            cmd: "xdotool",
+            args: [
+              "mousemove", String(startX), String(startY),
+              "mousedown", "3",
+              "mousemove", "--sync", String(endX), String(endY),
+              "mouseup", "3",
+            ],
+            env: DISPLAY_ENV,
+          });
+          return { type: "text" as const, text: `Right-dragged from ${startX},${startY} to ${endX},${endY}` };
+        }
+        case "cursor_position": {
+          const result = await sandbox.runCommand({
+            cmd: "bash",
+            args: ["-c", "xdotool getmouselocation --shell"],
+            env: DISPLAY_ENV,
+          });
+          return { type: "text" as const, text: result.stdout ?? "Could not get cursor position" };
+        }
         default:
-          throw new Error(`Unsupported action: ${action}`);
+          throw new Error(`Unsupported action: ${normalizedAction} (received: ${action})`);
       }
     },
   });

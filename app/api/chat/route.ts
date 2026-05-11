@@ -18,16 +18,24 @@ export async function POST(req: Request) {
     await req.json();
   try {
     const result = streamText({
-      model: groq("llama-3.1-8b-instant"),
+      model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
       system:
-        "You are a helpful assistant with access to a computer desktop. " +
-        "Use the computer tool for GUI interactions (always take a screenshot first to see the screen). " +
-        "Use the bash tool to run shell commands. Prefer bash when it is simpler. " +
-        "Skip browser setup wizards and type URLs directly in the address bar. " +
-        "After completing a task or gathering information with tools, ALWAYS write a clear text response summarising what you did and what you found. Do not end with a tool call.",
+        "You are an expert AI agent with full control of a Linux desktop computer. " +
+        "You can see the screen, click, type, scroll, drag, and run shell commands — just like a human.\n\n" +
+        "TOOLS:\n" +
+        "- computer: screenshot | left_click | right_click | double_click | triple_click | middle_click | mouse_move | type | key | hold_key | scroll | left_click_drag | right_click_drag | cursor_position | wait\n" +
+        "- bash: run any shell command\n\n" +
+        "WORKFLOW:\n" +
+        "1. Take a screenshot to see the current screen state.\n" +
+        "2. Analyse carefully — identify elements and their pixel positions on the 1024×768 screen.\n" +
+        "3. Act, then take another screenshot to verify the result.\n" +
+        "4. If something fails, try an alternative approach (keyboard shortcut, bash command, different click target).\n" +
+        "5. Repeat until the task is fully complete.\n" +
+        "6. Write a final text summary of what you did. Never end on a tool call.\n\n" +
+        "TIPS: Chrome is open. Click the address bar to navigate. Click a text field before typing. Use bash for file I/O and system info.",
       messages: prunedMessages(messages),
       tools: { computer: computerTool(sandboxId), bash: bashTool(sandboxId) },
-      maxSteps: 10,
+      maxSteps: 25,
     });
 
     return result.toDataStreamResponse({
